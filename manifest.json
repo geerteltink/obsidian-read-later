@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-read-later",
 	"name": "Read Later",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"minAppVersion": "0.15.0",
 	"description": "Fetches XML Feeds to be read later.",
 	"author": "Geert Eltink",
