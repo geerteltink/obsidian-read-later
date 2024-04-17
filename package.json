@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-read-later",
-	"version": "0.5.0",
+	"version": "0.6.0",
 	"description": "This is a rss feed read later plugin for Obsidian (https://obsidian.md)",
 	"main": "main.js",
 	"scripts": {
