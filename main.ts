@@ -75,10 +75,13 @@ export default class ReadLaterPlugin extends Plugin {
 			const feed = await parser.parseURL(url);
 			for (const entry of feed.items) {
 				if (!entry.isoDate || lastSynced < new Date(entry.isoDate)) {
+					const date = entry.isoDate
+						? ` ➕ ${entry.isoDate.split("T")[0]}`
+						: "";
 					content.trimEnd();
 					content += `- [ ] [${entry.title}](${entry.link}) _(${
 						feed.title ?? feed.link
-					})_\n`;
+					})_${date}\n`;
 				}
 			}
 		} catch (error) {
