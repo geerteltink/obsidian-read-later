@@ -22,7 +22,6 @@
 		"typescript": "^5.4.5"
 	},
 	"dependencies": {
-		"date-fns": "^3.6.0",
 		"rss-parser": "^3.13.0"
 	}
 }

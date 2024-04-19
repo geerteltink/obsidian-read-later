@@ -1,60 +1,67 @@
 import { Notice, Plugin, TFile } from "obsidian";
 import Parser from "rss-parser";
-import { format } from "date-fns/format";
 
 export default class ReadLaterPlugin extends Plugin {
 	async onload() {
-		await this.updateFeeds();
+		console.log("Read Later - Loaded");
 
 		// This function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(
-			window.setInterval(() => this.updateFeeds(), 60 * 60 * 1000)
+			window.setInterval(() => this.run(), 10 * 60 * 1000)
 		);
 	}
 
 	onunload() {}
 
-	async updateFeeds() {
+	async run() {
 		const folder = this.app.vault.getFolderByPath("read later");
 		if (folder === null) {
-			console.error("Read Later - Folder does not exist");
+			console.warn("Read Later - Folder does not exist");
 			return;
 		}
 
-		console.log("Read Later - Syncing feeds");
+		const now = new Date();
 
-		for (const category of folder.children) {
-			if (category instanceof TFile) {
-				const lastSynced = this.extractSyncedTime(category);
-				const feeds = this.extractFeeds(category);
+		for (const file of folder.children) {
+			if (file instanceof TFile) {
+				const lastSynced = this.extractSyncedTime(file);
+
+				const nextSync = new Date(lastSynced);
+				nextSync.setHours(nextSync.getHours() + 1);
+
+				if (now.getTime() < nextSync.getTime()) {
+					return;
+				}
+
+				const feeds = this.extractFeeds(file);
 				if (feeds === null) {
 					return;
 				}
 
 				for (const feed of feeds) {
-					await this.updateFeed(category, feed, lastSynced);
-					await this.updateSyncedTime(category);
+					await this.updateFeed(file, feed, lastSynced);
+					await this.updateSyncedTime(file, now);
 				}
 			}
 		}
 	}
 
-	extractSyncedTime(category: TFile): Date {
-		const metadataCache = this.app.metadataCache.getFileCache(category);
+	extractSyncedTime(file: TFile): Date {
+		const metadataCache = this.app.metadataCache.getFileCache(file);
 		const frontMatterCache = metadataCache?.frontmatter;
 
-		const defaultDate = new Date();
-		defaultDate.setFullYear(new Date().getFullYear() - 3);
-
 		if (frontMatterCache === undefined || !frontMatterCache.xml_synced) {
+			const defaultDate = new Date();
+			defaultDate.setFullYear(new Date().getFullYear() - 3);
+
 			return defaultDate;
 		}
 
 		return new Date(frontMatterCache.xml_synced);
 	}
 
-	extractFeeds(category: TFile): string[] | null {
-		const metadataCache = this.app.metadataCache.getFileCache(category);
+	extractFeeds(file: TFile): string[] | null {
+		const metadataCache = this.app.metadataCache.getFileCache(file);
 		const frontMatterCache = metadataCache?.frontmatter;
 
 		if (frontMatterCache === undefined) {
@@ -79,15 +86,25 @@ export default class ReadLaterPlugin extends Plugin {
 				: feed.title ?? "-";
 			const domain = site.replace(/^www\./, "");
 
-			for (const entry of feed.items) {
-				if (!entry.isoDate || lastSynced < new Date(entry.isoDate)) {
-					const date = entry.isoDate
-						? ` ➕ ${entry.isoDate.split("T")[0]}`
-						: "";
+			for (const entry of feed.items.reverse()) {
+				const entryCreated = new Date(entry.isoDate ?? "");
 
-					content.trimEnd();
-					content += `- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
+				// Skip old entries
+				if (entryCreated.getTime() < lastSynced.getTime()) {
+					continue;
 				}
+
+				// Skip duplicate entries
+				if (entry.link && content.contains(entry.link)) {
+					continue;
+				}
+
+				const date = entry.isoDate
+					? ` ➕ ${entry.isoDate.split("T")[0]}`
+					: "";
+
+				content.trimEnd();
+				content += `- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
 			}
 		} catch (error) {
 			return;
@@ -96,14 +113,12 @@ export default class ReadLaterPlugin extends Plugin {
 		await this.app.vault.modify(file, content);
 	}
 
-	async updateSyncedTime(file: TFile) {
+	async updateSyncedTime(file: TFile, now: Date) {
 		try {
 			await this.app.fileManager.processFrontMatter(
 				file,
 				(frontmatter) => {
-					frontmatter["xml_synced"] = formatTimestamp(
-						file.stat.mtime
-					);
+					frontmatter["xml_synced"] = now.toISOString();
 				}
 			);
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -119,8 +134,4 @@ export default class ReadLaterPlugin extends Plugin {
 			}
 		}
 	}
-}
-
-function formatTimestamp(input: number): string {
-	return format(new Date(input), "yyyy-MM-dd'T'HH:mm");
 }
