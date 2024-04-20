@@ -46,7 +46,7 @@ export default class ReadLaterPlugin extends Plugin {
 				try {
 					await this.fetchFeed(file, feed, lastSynced);
 					await this.updateSyncedTime(file, now);
-					// TODO: remove old entries
+					await this.removeOldEntries(file, now);
 				} catch (error) {
 					this.notifyError(
 						`Read Later - Error processing ${file.name}`,
@@ -111,7 +111,7 @@ export default class ReadLaterPlugin extends Plugin {
 			const date = entry.isoDate
 				? ` ➕ ${entry.isoDate.split("T")[0]}`
 				: "";
-			const newEntry = `- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
+			const newEntry = `\n- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
 			content = content.trimEnd() + newEntry;
 		}
 
@@ -136,6 +136,30 @@ export default class ReadLaterPlugin extends Plugin {
 			);
 			return { status: "error", error };
 		}
+	}
+
+	async removeOldEntries(file: TFile, currentTime: Date) {
+		const currentDate = currentTime.toISOString().split("T")[0];
+		const content = await this.app.vault.read(file);
+		const entries = content.split("\n");
+
+		const cleanedEntries = [];
+		for (let i = 0; i < entries.length; i++) {
+			const entry = entries[i];
+			if (
+				!entry.startsWith("- [x]") ||
+				entry.includes(`✅ ${currentDate}`)
+			) {
+				cleanedEntries.push(entry);
+			}
+		}
+
+		const cleanedContent = cleanedEntries.join("\n");
+		if (cleanedContent === content) {
+			return;
+		}
+
+		await this.app.vault.modify(file, cleanedContent);
 	}
 
 	private notifyError(message: string, error: Error) {
