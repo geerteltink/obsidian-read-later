@@ -46,7 +46,7 @@ export default class ReadLaterPlugin extends Plugin {
 					await this.updateSyncedTime(file, now);
 				} catch (error) {
 					this.notifyError(
-						`Read Later - Error processing ${file.name}: ${error}`,
+						`Read Later - Error processing ${file.name}`,
 						error
 					);
 				}
@@ -71,13 +71,18 @@ export default class ReadLaterPlugin extends Plugin {
 	}
 
 	async fetchFeed(file: TFile, feedURL: string, lastSynced: Date) {
-		const content = await this.app.vault.read(file);
+		let content = await this.app.vault.read(file);
 		const parser = new Parser({ defaultRSS: 2.0, timeout: 10000 });
 		const feed = await parser.parseURL(feedURL);
 
-		const site = feed.link
-			? new URL(feed.link).hostname
-			: feed.title ?? "-";
+		let site = "-";
+		try {
+			site = feed.link
+				? new URL(feed.link).hostname
+				: new URL(feedURL).hostname;
+		} catch {
+			site = new URL(feedURL).hostname;
+		}
 		const domain = site.replace(/^www\./, "");
 
 		for (const entry of feed.items.reverse()) {
@@ -95,8 +100,10 @@ export default class ReadLaterPlugin extends Plugin {
 				? ` ➕ ${entry.isoDate.split("T")[0]}`
 				: "";
 			const newEntry = `- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
-			this.app.vault.modify(file, content.trimEnd() + newEntry);
+			content = content.trimEnd() + newEntry;
 		}
+
+		await this.app.vault.modify(file, content);
 	}
 
 	async updateSyncedTime(file: TFile, currentTime: Date) {
