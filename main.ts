@@ -7,7 +7,7 @@ export default class ReadLaterPlugin extends Plugin {
 
 		// This function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(
-			window.setInterval(() => this.run(), 10 * 60 * 1000)
+			window.setInterval(() => this.run(), 5 * 60 * 1000)
 		);
 	}
 
