@@ -2,6 +2,8 @@ import { Notice, Plugin, TFile } from "obsidian";
 import Parser from "rss-parser";
 
 export default class ReadLaterPlugin extends Plugin {
+	private totalNewEntries = 0;
+
 	async onload() {
 		console.log("Read Later - Loaded");
 
@@ -44,6 +46,7 @@ export default class ReadLaterPlugin extends Plugin {
 				try {
 					await this.fetchFeed(file, feed, lastSynced);
 					await this.updateSyncedTime(file, now);
+					// TODO: remove old entries
 				} catch (error) {
 					this.notifyError(
 						`Read Later - Error processing ${file.name}`,
@@ -52,6 +55,13 @@ export default class ReadLaterPlugin extends Plugin {
 				}
 			}
 		}
+
+		if (this.totalNewEntries > 0) {
+			new Notice(
+				`Read Later - ${this.totalNewEntries} new entries added`
+			);
+		}
+		this.totalNewEntries = 0;
 	}
 
 	private getSyncedTime(file: TFile): Date {
@@ -85,6 +95,7 @@ export default class ReadLaterPlugin extends Plugin {
 		}
 		const domain = site.replace(/^www\./, "");
 
+		let count = 0;
 		for (const entry of feed.items.reverse()) {
 			const entryDate = new Date(entry.isoDate ?? "");
 
@@ -96,11 +107,16 @@ export default class ReadLaterPlugin extends Plugin {
 				continue;
 			}
 
+			count++;
 			const date = entry.isoDate
 				? ` ➕ ${entry.isoDate.split("T")[0]}`
 				: "";
 			const newEntry = `- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
 			content = content.trimEnd() + newEntry;
+		}
+
+		if (count > 0) {
+			this.totalNewEntries += count;
 		}
 
 		await this.app.vault.modify(file, content);
