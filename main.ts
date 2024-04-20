@@ -15,7 +15,7 @@ export default class ReadLaterPlugin extends Plugin {
 
 	async run() {
 		const folder = this.app.vault.getFolderByPath("read later");
-		if (folder === null) {
+		if (!folder) {
 			console.warn("Read Later - Folder does not exist");
 			return;
 		}
@@ -23,115 +23,101 @@ export default class ReadLaterPlugin extends Plugin {
 		const now = new Date();
 
 		for (const file of folder.children) {
-			if (file instanceof TFile) {
-				const lastSynced = this.extractSyncedTime(file);
+			if (!(file instanceof TFile)) {
+				continue;
+			}
 
-				const nextSync = new Date(lastSynced);
-				nextSync.setHours(nextSync.getHours() + 1);
+			const lastSynced = this.getSyncedTime(file);
+			const nextSync = new Date(lastSynced);
+			nextSync.setHours(nextSync.getHours() + 1);
 
-				if (now.getTime() < nextSync.getTime()) {
-					return;
-				}
+			if (now.getTime() < nextSync.getTime()) {
+				continue;
+			}
 
-				const feeds = this.extractFeeds(file);
-				if (feeds === null) {
-					return;
-				}
+			const feeds = this.getFeedURLs(file);
+			if (!feeds) {
+				continue;
+			}
 
-				for (const feed of feeds) {
-					await this.updateFeed(file, feed, lastSynced);
+			for (const feed of feeds) {
+				try {
+					await this.fetchFeed(file, feed, lastSynced);
 					await this.updateSyncedTime(file, now);
+				} catch (error) {
+					this.notifyError(
+						`Read Later - Error processing ${file.name}: ${error}`,
+						error
+					);
 				}
 			}
 		}
 	}
 
-	extractSyncedTime(file: TFile): Date {
-		const metadataCache = this.app.metadataCache.getFileCache(file);
-		const frontMatterCache = metadataCache?.frontmatter;
+	private getSyncedTime(file: TFile): Date {
+		const cache = this.app.metadataCache.getFileCache(file);
+		const frontMatterCache = cache?.frontmatter;
 
-		if (frontMatterCache === undefined || !frontMatterCache.xml_synced) {
-			const defaultDate = new Date();
-			defaultDate.setFullYear(new Date().getFullYear() - 3);
-
-			return defaultDate;
+		if (!frontMatterCache?.xml_synced) {
+			return new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000); // 3 years ago
 		}
 
 		return new Date(frontMatterCache.xml_synced);
 	}
 
-	extractFeeds(file: TFile): string[] | null {
-		const metadataCache = this.app.metadataCache.getFileCache(file);
-		const frontMatterCache = metadataCache?.frontmatter;
-
-		if (frontMatterCache === undefined) {
-			return null;
-		}
-
-		return frontMatterCache.xml_feeds;
+	private getFeedURLs(file: TFile): string[] | null {
+		const metadata = this.app.metadataCache.getFileCache(file);
+		return metadata?.frontmatter?.xml_feeds ?? null;
 	}
 
-	async updateFeed(file: TFile, url: string, lastSynced: Date) {
-		let content = await this.app.vault.read(file);
-		const parser = new Parser({
-			defaultRSS: 2.0,
-			timeout: 10000,
-		});
+	async fetchFeed(file: TFile, feedURL: string, lastSynced: Date) {
+		const content = await this.app.vault.read(file);
+		const parser = new Parser({ defaultRSS: 2.0, timeout: 10000 });
+		const feed = await parser.parseURL(feedURL);
 
-		try {
-			const feed = await parser.parseURL(url);
+		const site = feed.link
+			? new URL(feed.link).hostname
+			: feed.title ?? "-";
+		const domain = site.replace(/^www\./, "");
 
-			const site = feed.link
-				? new URL(feed.link).hostname
-				: feed.title ?? "-";
-			const domain = site.replace(/^www\./, "");
+		for (const entry of feed.items.reverse()) {
+			const entryDate = new Date(entry.isoDate ?? "");
 
-			for (const entry of feed.items.reverse()) {
-				const entryCreated = new Date(entry.isoDate ?? "");
-
-				// Skip old entries
-				if (entryCreated.getTime() < lastSynced.getTime()) {
-					continue;
-				}
-
-				// Skip duplicate entries
-				if (entry.link && content.contains(entry.link)) {
-					continue;
-				}
-
-				const date = entry.isoDate
-					? ` ➕ ${entry.isoDate.split("T")[0]}`
-					: "";
-
-				content.trimEnd();
-				content += `- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
+			if (entryDate.getTime() < lastSynced.getTime()) {
+				continue;
 			}
-		} catch (error) {
-			return;
-		}
 
-		await this.app.vault.modify(file, content);
+			if (entry.link && content.contains(entry.link)) {
+				continue;
+			}
+
+			const date = entry.isoDate
+				? ` ➕ ${entry.isoDate.split("T")[0]}`
+				: "";
+			const newEntry = `- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
+			this.app.vault.modify(file, content.trimEnd() + newEntry);
+		}
 	}
 
-	async updateSyncedTime(file: TFile, now: Date) {
+	async updateSyncedTime(file: TFile, currentTime: Date) {
 		try {
 			await this.app.fileManager.processFrontMatter(
 				file,
-				(frontmatter) => {
-					frontmatter["xml_synced"] = now.toISOString();
-				}
+				(frontMatter) =>
+					(frontMatter.xml_synced = currentTime.toISOString())
 			);
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		} catch (e: any) {
-			if (e?.name === "YAMLParseError") {
-				const errorMessage = `Timestamp failed to update because of malformed frontmatter on this file : ${file.path} ${e.message}`;
-				new Notice(errorMessage, 4000);
-				console.error(errorMessage);
-				return {
-					status: "error",
-					error: e,
-				};
-			}
+		} catch (error) {
+			this.notifyError(
+				`Read Later - Failed to update timestamp in ${file.path}`,
+				error
+			);
+			return { status: "error", error };
 		}
+	}
+
+	private notifyError(message: string, error: Error) {
+		const errorMessage = `${message}: ${error.message}`;
+		new Notice(errorMessage, 4000);
+		console.error(errorMessage);
 	}
 }
