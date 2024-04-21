@@ -1,5 +1,5 @@
-import { Notice, Plugin, TFile } from "obsidian";
-import Parser from "rss-parser";
+import { Notice, Plugin, TFile, request } from "obsidian";
+import { extractFromXml } from "@extractus/feed-extractor";
 
 export default class ReadLaterPlugin extends Plugin {
 	private totalNewEntries = 0;
@@ -18,6 +18,7 @@ export default class ReadLaterPlugin extends Plugin {
 	async run() {
 		const folder = this.app.vault.getFolderByPath("read later");
 		if (!folder) {
+			new Notice(`Read Later - Folder does not exist`);
 			console.warn("Read Later - Folder does not exist");
 			return;
 		}
@@ -45,8 +46,6 @@ export default class ReadLaterPlugin extends Plugin {
 			for (const feed of feeds) {
 				try {
 					await this.fetchFeed(file, feed, lastSynced);
-					await this.updateSyncedTime(file, now);
-					await this.removeOldEntries(file, now);
 				} catch (error) {
 					this.notifyError(
 						`Read Later - Error processing ${file.name}`,
@@ -54,6 +53,9 @@ export default class ReadLaterPlugin extends Plugin {
 					);
 				}
 			}
+
+			await this.updateSyncedTime(file, now);
+			await this.removeOldEntries(file, now);
 		}
 
 		if (this.totalNewEntries > 0) {
@@ -81,9 +83,15 @@ export default class ReadLaterPlugin extends Plugin {
 	}
 
 	async fetchFeed(file: TFile, feedURL: string, lastSynced: Date) {
-		let content = await this.app.vault.read(file);
-		const parser = new Parser({ defaultRSS: 2.0, timeout: 10000 });
-		const feed = await parser.parseURL(feedURL);
+		const xml = await request(feedURL);
+		if (!xml) {
+			return;
+		}
+
+		const feed = extractFromXml(xml);
+		if (!feed || !feed.entries) {
+			return;
+		}
 
 		let site = "-";
 		try {
@@ -95,9 +103,10 @@ export default class ReadLaterPlugin extends Plugin {
 		}
 		const domain = site.replace(/^www\./, "");
 
+		let content = await this.app.vault.read(file);
 		let count = 0;
-		for (const entry of feed.items.reverse()) {
-			const entryDate = new Date(entry.isoDate ?? "");
+		for (const entry of feed.entries.reverse()) {
+			const entryDate = new Date(entry.published ?? "");
 
 			if (entryDate.getTime() < lastSynced.getTime()) {
 				continue;
@@ -108,10 +117,10 @@ export default class ReadLaterPlugin extends Plugin {
 			}
 
 			count++;
-			const date = entry.isoDate
-				? ` ➕ ${entry.isoDate.split("T")[0]}`
-				: "";
-			const newEntry = `\n- [ ] [${entry.title}](${entry.link}) [site:: ${domain}]${date}\n`;
+			const date = entryDate.toISOString().split("T")[0];
+			const title =
+				entry.title && entry.title !== "" ? entry.title : date;
+			const newEntry = `\n- [ ] [${title}](${entry.link}) [site:: ${domain}]${date}\n`;
 			content = content.trimEnd() + newEntry;
 		}
 
