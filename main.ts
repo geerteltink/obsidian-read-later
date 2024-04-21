@@ -117,9 +117,11 @@ export default class ReadLaterPlugin extends Plugin {
 			}
 
 			count++;
-			const date = entryDate.toISOString().split("T")[0];
 			const title =
-				entry.title && entry.title !== "" ? entry.title : date;
+				entry.title && entry.title !== ""
+					? entry.title
+					: entryDate.toISOString().split("T")[0];
+			const date = ` ➕ ${entryDate.toISOString().split("T")[0]}`;
 			const newEntry = `\n- [ ] [${title}](${entry.link}) [site:: ${domain}]${date}\n`;
 			content = content.trimEnd() + newEntry;
 		}
