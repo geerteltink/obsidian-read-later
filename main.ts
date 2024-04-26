@@ -4,6 +4,9 @@ import { extractFromXml } from "@extractus/feed-extractor";
 export default class ReadLaterPlugin extends Plugin {
 	private totalNewEntries = 0;
 
+	blacklistedURLs = ["www.theatlantic.com"];
+	blacklistedStrings = ["is hiring a"];
+
 	async onload() {
 		console.log("Read Later - Loaded");
 
@@ -116,6 +119,10 @@ export default class ReadLaterPlugin extends Plugin {
 				continue;
 			}
 
+			if (this.isBlacklisted(entry.link, entry.title)) {
+				continue;
+			}
+
 			count++;
 			const title =
 				entry.title && entry.title !== ""
@@ -171,6 +178,31 @@ export default class ReadLaterPlugin extends Plugin {
 		}
 
 		await this.app.vault.modify(file, cleanedContent);
+	}
+
+	private isBlacklisted(
+		url: string | undefined,
+		title: string | undefined
+	): boolean {
+		if (
+			url &&
+			this.blacklistedURLs.some((blacklisted) =>
+				url.toLowerCase().includes(blacklisted)
+			)
+		) {
+			return true;
+		}
+
+		if (
+			title &&
+			this.blacklistedStrings.some((blacklisted) =>
+				title.toLowerCase().includes(blacklisted)
+			)
+		) {
+			return true;
+		}
+
+		return false;
 	}
 
 	private notifyError(message: string, error: Error) {
