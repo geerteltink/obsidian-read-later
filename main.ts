@@ -5,14 +5,18 @@ export default class ReadLaterPlugin extends Plugin {
 	private totalNewEntries = 0;
 
 	blacklistedURLs = ["www.theatlantic.com"];
-	blacklistedStrings = ["is hiring a"];
+	blacklistedStrings = [" is hiring "];
 
 	async onload() {
 		console.log("Read Later - Loaded");
 
+		this.app.workspace.onLayoutReady(() => {
+			this.run();
+		});
+
 		// This function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(
-			window.setInterval(() => this.run(), 5 * 60 * 1000)
+			window.setInterval(() => this.run(), 300000) // 5 minutes in milliseconds
 		);
 	}
 
@@ -21,8 +25,15 @@ export default class ReadLaterPlugin extends Plugin {
 	async run() {
 		const folder = this.app.vault.getFolderByPath("read later");
 		if (!folder) {
-			new Notice(`Read Later - Folder does not exist`);
+			new Notice("Read Later - Folder does not exist");
 			console.warn("Read Later - Folder does not exist");
+			return;
+		}
+
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const sync = (this.app as any)?.internalPlugins?.plugins?.sync
+			?.instance;
+		if (sync && sync.syncStatus?.toLowerCase() !== "fully synced") {
 			return;
 		}
 
@@ -34,12 +45,13 @@ export default class ReadLaterPlugin extends Plugin {
 			}
 
 			const lastSynced = this.getSyncedTime(file);
-			const nextSync = new Date(lastSynced);
-			nextSync.setHours(nextSync.getHours() + 1);
+			const nextSync = new Date(lastSynced.getTime() + 10800000); // 3 hours in milliseconds
 
 			if (now.getTime() < nextSync.getTime()) {
 				continue;
 			}
+
+			console.log(`Read Later - Syncing ${file.name}`);
 
 			const feeds = this.getFeedURLs(file);
 			if (!feeds) {
@@ -74,7 +86,7 @@ export default class ReadLaterPlugin extends Plugin {
 		const frontMatterCache = cache?.frontmatter;
 
 		if (!frontMatterCache?.xml_synced) {
-			return new Date(Date.now() - 3 * 365 * 24 * 60 * 60 * 1000); // 3 years ago
+			return new Date(Date.now() - 31556926000); // 1 year in milliseconds
 		}
 
 		return new Date(frontMatterCache.xml_synced);
@@ -115,11 +127,11 @@ export default class ReadLaterPlugin extends Plugin {
 				continue;
 			}
 
-			if (entry.link && content.contains(entry.link)) {
+			if (this.isBlacklisted(entry.link, entry.title)) {
 				continue;
 			}
 
-			if (this.isBlacklisted(entry.link, entry.title)) {
+			if (entry.link && content.contains(entry.link)) {
 				continue;
 			}
 
