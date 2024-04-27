@@ -10,11 +10,6 @@ export default class ReadLaterPlugin extends Plugin {
 	async onload() {
 		console.log("Read Later - Loaded");
 
-		this.app.workspace.onLayoutReady(() => {
-			this.run();
-		});
-
-		// This function will automatically clear the interval when the plugin is disabled.
 		this.registerInterval(
 			window.setInterval(() => this.run(), 300000) // 5 minutes in milliseconds
 		);
