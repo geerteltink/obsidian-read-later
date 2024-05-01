@@ -4,8 +4,8 @@ import { extractFromXml } from "@extractus/feed-extractor";
 export default class ReadLaterPlugin extends Plugin {
 	private totalNewEntries = 0;
 
-	blacklistedURLs = ["www.theatlantic.com"];
-	blacklistedStrings = [" is hiring "];
+	blacklistedURLs = ["www.theatlantic.com", "www.wsj.com", "arxiv.org"];
+	blacklistedStrings = [" hiring "];
 
 	async onload() {
 		console.log("Read Later - Loaded");
