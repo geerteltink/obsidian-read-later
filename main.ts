@@ -1,6 +1,13 @@
 import { Notice, Plugin, TFile, request } from "obsidian";
 import { extractFromXml } from "@extractus/feed-extractor";
 
+type Entry = {
+	domain: string;
+	link: string;
+	title: string;
+	date: Date;
+};
+
 export default class ReadLaterPlugin extends Plugin {
 	private totalNewEntries = 0;
 
@@ -39,6 +46,7 @@ export default class ReadLaterPlugin extends Plugin {
 				continue;
 			}
 
+			// 1. Fetch synced datetime
 			const lastSynced = this.getSyncedTime(file);
 			const nextSync = new Date(lastSynced.getTime() + 3600000); // 1 hour in milliseconds
 
@@ -48,24 +56,50 @@ export default class ReadLaterPlugin extends Plugin {
 
 			console.log(`Read Later - Syncing ${file.name}`);
 
+			// 2. Fetch feeds
 			const feeds = this.getFeedURLs(file);
 			if (!feeds) {
 				continue;
 			}
 
+			const entries: Entry[] = [];
 			for (const feed of feeds) {
 				try {
-					await this.fetchFeed(file, feed, lastSynced);
+					// 3. Fetch new entries from feeds, skip blacklisted entries
+					entries.push(
+						...(await this.fetchFeedEntries(feed, lastSynced))
+					);
 				} catch (error) {
+					// 4. Log and ignore failed feeds
 					this.notifyError(
-						`Read Later - Error processing ${file.name}`,
+						`Read Later - Error fetching feeds from ${feed}`,
 						error
 					);
 				}
 			}
 
+			// 5. Load category content
+			const content = await this.app.vault.read(file);
+
+			// 6. Add new entries to content
+			const mergedContent = this.mergeEntriesWithContent(
+				entries,
+				content
+			);
+
+			// 7. Remove old entries from content
+			const cleanedContent = await this.removeOldEntries(
+				mergedContent,
+				now
+			);
+
+			if (content !== cleanedContent) {
+				// 8. Save new category content if there are changes
+				await this.app.vault.modify(file, cleanedContent);
+			}
+
+			// 9. Update synced datetime
 			await this.updateSyncedTime(file, now);
-			await this.removeOldEntries(file, now);
 		}
 
 		if (this.totalNewEntries > 0) {
@@ -92,15 +126,19 @@ export default class ReadLaterPlugin extends Plugin {
 		return metadata?.frontmatter?.xml_feeds ?? null;
 	}
 
-	async fetchFeed(file: TFile, feedURL: string, lastSynced: Date) {
+	async fetchFeedEntries(
+		feedURL: string,
+		lastSynced: Date
+	): Promise<Entry[]> {
+		const entries: Entry[] = [];
 		const xml = await request(feedURL);
 		if (!xml) {
-			return;
+			return entries;
 		}
 
 		const feed = extractFromXml(xml);
 		if (!feed || !feed.entries) {
-			return;
+			return entries;
 		}
 
 		let site = "-";
@@ -113,9 +151,7 @@ export default class ReadLaterPlugin extends Plugin {
 		}
 		const domain = site.replace(/^www\./, "");
 
-		let content = await this.app.vault.read(file);
-		let count = 0;
-		for (const entry of feed.entries.reverse()) {
+		for (const entry of feed.entries) {
 			const entryDate = new Date(entry.published ?? "");
 
 			if (entryDate.getTime() < lastSynced.getTime()) {
@@ -126,17 +162,32 @@ export default class ReadLaterPlugin extends Plugin {
 				continue;
 			}
 
-			if (entry.link && content.contains(entry.link)) {
+			entries.push({
+				domain: domain,
+				link: entry.link ?? "",
+				title: entry.title ?? "",
+				date: entryDate,
+			});
+		}
+
+		return entries;
+	}
+
+	private mergeEntriesWithContent(entries: Entry[], content: string): string {
+		let count = 0;
+		for (const entry of entries.reverse()) {
+			if (content.contains(entry.link)) {
 				continue;
 			}
 
 			count++;
 			const title =
-				entry.title && entry.title !== ""
+				entry.title !== ""
 					? entry.title
-					: entryDate.toISOString().split("T")[0];
-			const date = ` ➕ ${entryDate.toISOString().split("T")[0]}`;
-			const newEntry = `\n- [ ] [${title}](${entry.link}) [site:: ${domain}]${date}\n`;
+					: entry.date.toISOString().split("T")[0];
+			const date = ` ➕ ${entry.date.toISOString().split("T")[0]}`;
+			const newEntry = `\n- [ ] [${title}](${entry.link}) [site:: ${entry.domain}]${date}\n`;
+
 			content = content.trimEnd() + newEntry;
 		}
 
@@ -144,7 +195,7 @@ export default class ReadLaterPlugin extends Plugin {
 			this.totalNewEntries += count;
 		}
 
-		await this.app.vault.modify(file, content);
+		return content;
 	}
 
 	async updateSyncedTime(file: TFile, currentTime: Date) {
@@ -163,9 +214,8 @@ export default class ReadLaterPlugin extends Plugin {
 		}
 	}
 
-	async removeOldEntries(file: TFile, currentTime: Date) {
+	async removeOldEntries(content: string, currentTime: Date): string {
 		const currentDate = currentTime.toISOString().split("T")[0];
-		const content = await this.app.vault.read(file);
 		const entries = content.split("\n");
 
 		const cleanedEntries = [];
@@ -179,12 +229,7 @@ export default class ReadLaterPlugin extends Plugin {
 			}
 		}
 
-		const cleanedContent = cleanedEntries.join("\n");
-		if (cleanedContent === content) {
-			return;
-		}
-
-		await this.app.vault.modify(file, cleanedContent);
+		return cleanedEntries.join("\n");
 	}
 
 	private isBlacklisted(
