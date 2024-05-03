@@ -40,7 +40,7 @@ export default class ReadLaterPlugin extends Plugin {
 			}
 
 			const lastSynced = this.getSyncedTime(file);
-			const nextSync = new Date(lastSynced.getTime() + 10800000); // 3 hours in milliseconds
+			const nextSync = new Date(lastSynced.getTime() + 3600000); // 1 hour in milliseconds
 
 			if (now.getTime() < nextSync.getTime()) {
 				continue;
