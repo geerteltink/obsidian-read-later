@@ -88,10 +88,7 @@ export default class ReadLaterPlugin extends Plugin {
 			);
 
 			// 7. Remove old entries from content
-			const cleanedContent = await this.removeOldEntries(
-				mergedContent,
-				now
-			);
+			const cleanedContent = this.removeOldEntries(mergedContent, now);
 
 			if (content !== cleanedContent) {
 				// 8. Save new category content if there are changes
@@ -214,7 +211,7 @@ export default class ReadLaterPlugin extends Plugin {
 		}
 	}
 
-	async removeOldEntries(content: string, currentTime: Date): string {
+	private removeOldEntries(content: string, currentTime: Date): string {
 		const currentDate = currentTime.toISOString().split("T")[0];
 		const entries = content.split("\n");
 
