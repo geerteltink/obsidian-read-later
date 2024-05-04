@@ -111,16 +111,16 @@ export default class ReadLaterPlugin extends Plugin {
 		const cache = this.app.metadataCache.getFileCache(file);
 		const frontMatterCache = cache?.frontmatter;
 
-		if (!frontMatterCache?.xml_synced) {
+		if (!frontMatterCache?.readlater_synced) {
 			return new Date(Date.now() - 31556926000); // 1 year in milliseconds
 		}
 
-		return new Date(frontMatterCache.xml_synced);
+		return new Date(frontMatterCache.readlater_synced);
 	}
 
 	private getFeedURLs(file: TFile): string[] | null {
 		const metadata = this.app.metadataCache.getFileCache(file);
-		return metadata?.frontmatter?.xml_feeds ?? null;
+		return metadata?.frontmatter?.readlater_feeds ?? null;
 	}
 
 	async fetchFeedEntries(
@@ -200,7 +200,7 @@ export default class ReadLaterPlugin extends Plugin {
 			await this.app.fileManager.processFrontMatter(
 				file,
 				(frontMatter) => {
-					frontMatter.xml_synced = currentTime.getTime();
+					frontMatter.readlater_synced = currentTime.getTime();
 				}
 			);
 		} catch (error) {
