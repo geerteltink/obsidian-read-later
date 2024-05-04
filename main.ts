@@ -18,7 +18,7 @@ export default class ReadLaterPlugin extends Plugin {
 		console.log("Read Later - Loaded");
 
 		this.registerInterval(
-			window.setInterval(() => this.run(), 300000) // 5 minutes in milliseconds
+			window.setInterval(() => this.run(), 5 * 60 * 1000) // 5 minutes in milliseconds
 		);
 	}
 
@@ -48,7 +48,7 @@ export default class ReadLaterPlugin extends Plugin {
 
 			// 1. Fetch synced datetime
 			const lastSynced = this.getSyncedTime(file);
-			const nextSync = new Date(lastSynced.getTime() + 3600000); // 1 hour in milliseconds
+			const nextSync = new Date(lastSynced.getTime() + 60 * 60 * 1000); // 1 hour in milliseconds
 
 			if (now.getTime() < nextSync.getTime()) {
 				continue;
@@ -112,7 +112,7 @@ export default class ReadLaterPlugin extends Plugin {
 		const frontMatterCache = cache?.frontmatter;
 
 		if (!frontMatterCache?.readlater_synced) {
-			return new Date(Date.now() - 31556926000); // 1 year in milliseconds
+			return new Date(Date.now() - 1 * 365 * 24 * 60 * 60 * 1000); // 1 year in milliseconds
 		}
 
 		return new Date(frontMatterCache.readlater_synced);
