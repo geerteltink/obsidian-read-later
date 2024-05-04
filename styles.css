@@ -4,7 +4,8 @@
 
 .metadata-properties-heading,
 .metadata-add-button,
-.metadata-property[data-property-key='xml_feeds'] {
+.metadata-property[data-property-key='readlater_feeds'],
+.metadata-property[data-property-key='readlater_synced'] {
 	display: none;
 	visibility: hidden !important;
 }
