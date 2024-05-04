@@ -12,7 +12,7 @@ export default class ReadLaterPlugin extends Plugin {
 	private totalNewEntries = 0;
 
 	blacklistedURLs = ["www.theatlantic.com", "www.wsj.com", "arxiv.org"];
-	blacklistedStrings = [" hiring "];
+	blacklistedStrings = ["hiring"];
 
 	async onload() {
 		console.log("Read Later - Loaded");
