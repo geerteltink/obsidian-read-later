@@ -199,8 +199,9 @@ export default class ReadLaterPlugin extends Plugin {
 		try {
 			await this.app.fileManager.processFrontMatter(
 				file,
-				(frontMatter) =>
-					(frontMatter.xml_synced = currentTime.toISOString())
+				(frontMatter) => {
+					frontMatter.xml_synced = currentTime.getTime();
+				}
 			);
 		} catch (error) {
 			this.notifyError(
